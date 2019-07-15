@@ -651,7 +651,6 @@ func (cont *AciController) updateServiceDeviceInstanceSnat(key string) error {
 
        // graphName := cont.aciNameForKey("snat", "global")
 	graphName := cont.aciNameForKey("svc", "global")
-	cont.log.Debug("Changed graph name")
         var serviceObjs apicapi.ApicSlice
         if len(nodes) > 0 {
 
@@ -686,7 +685,6 @@ func (cont *AciController) updateServiceDeviceInstanceSnat(key string) error {
 			for _, policy := range cont.snatPolicyCache {
 				ingresses = append(ingresses, policy.SnatIp...)
 			}
-			cont.log.Debug("[[[[[[[ ip issss ", ingresses)
                         serviceObjs = append(serviceObjs,
                                 apicExtNetSnat(name, cont.config.AciVrfTenant,
                                         cont.config.AciL3Out, ingresses, sharedSecurity))
