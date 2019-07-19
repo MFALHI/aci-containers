@@ -262,11 +262,22 @@ func (conn *ApicConnection) fullSync() {
 	for tag, current := range conn.cachedState {
 		sort.Sort(current)
 		key := conn.keyHashes[tag]
+		if tag == "vk8s_1-0d9f518fb143dc5d1d156d93c3f1a361" {
+	//		conn.log.Debug("!!!!!checking frontend ", key)
+			if _, ok := conn.desiredState[key]; ok {
+	//			conn.log.Debug("!!!!!!frontend is in desiredstate")
+			}
+		}
+		if tag == "vk8s_1-ad31443540e268721a8b09976bbe6056" {
+	//		conn.log.Debug("!!!!!!checking MYSNAT", key)
+			if _, ok := conn.desiredState[key]; ok {
+	//			conn.log.Debug("!!!!!!MYSNAT is in desiredstate")
+			}
+		}
 		u, d := conn.diffApicState(current, conn.desiredState[key])
 		updates = append(updates, u...)
 		deletes = append(deletes, d...)
 	}
-
 	for key, desired := range conn.desiredState {
 		tag := getTagFromKey(conn.prefix, key)
 		if _, ok := conn.cachedState[tag]; !ok {
@@ -319,6 +330,7 @@ func (conn *ApicConnection) updateDnIndex(objects ApicSlice) {
 }
 
 func (conn *ApicConnection) removeFromDnIndex(dn string) {
+//	conn.log.Debug("removeFromDnIndex ...", dn)
 	if obj, ok := conn.desiredStateDn[dn]; ok {
 		delete(conn.desiredStateDn, dn)
 
@@ -333,7 +345,11 @@ func (conn *ApicConnection) removeFromDnIndex(dn string) {
 func (conn *ApicConnection) doWriteApicObjects(key string, objects ApicSlice,
 	container bool) {
 	//cont.log.Debug("deleting ", key)
+	//conn.log.Debug("apicslice is being written ", key)
 	tag := getTagFromKey(conn.prefix, key)
+	if tag == "vk8s_1-ad31443540e268721a8b09976bbe6056" {
+	//	conn.log.Debug("apicslice is being written ")
+	}
 	prepareApicSliceTag(objects, tag, conn.UseAPICInstTag)
 
 	conn.indexMutex.Lock()
@@ -373,6 +389,13 @@ func (conn *ApicConnection) doWriteApicObjects(key string, objects ApicSlice,
 	} else {
 		conn.indexMutex.Unlock()
 	}
+	if tag == "vk8s_1-ad31443540e268721a8b09976bbe6056" {
+		//conn.log.Debug("our slice in desiredstate... ")
+	}
+	if tag == "vk8s_1-0d9f518fb143dc5d1d156d93c3f1a361" {
+	//	conn.log.Debug("front end slice is ...")
+	}
+
 }
 
 func (conn *ApicConnection) ClearApicContainer(key string) {

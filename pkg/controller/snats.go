@@ -19,6 +19,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 //	"k8s.io/apimachinery/pkg/runtime"
 //	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -93,7 +94,6 @@ func (cont *AciController) initSnatInformerBase(listWatch *cache.ListWatch) {
 }
 
 func(cont *AciController) snatAdded(obj interface{}) {
-	cont.log.Debug("NEW POLICY ADDER")
 	snat := obj.(*snatpolicy.SnatPolicy)
 	key, err := cache.MetaNamespaceKeyFunc(snat)
 	if err != nil {
@@ -106,10 +106,22 @@ func(cont *AciController) snatAdded(obj interface{}) {
 
 func (cont *AciController) queueSnatUpdateByKey(key string) {
 	cont.snatQ.Add(key)
+//	cont.log.Debug("qsnatbykey........", cont.snatIndexer.List())
+}
+
+func (cont *AciController) queueSnatUpdate(snatpolicy *snatpolicy.SnatPolicy) {
+	key, err := cache.MetaNamespaceKeyFunc(snatpolicy)
+//	cont.log.Debug("SNAT FULL SYNC ......", key)
+	if err != nil {
+		SnatPolicyLogger(cont.log, snatpolicy).
+			Error("Could not create key:" + err.Error())
+		return
+	}
+	cont.snatQ.Add(key)
 }
 
 func (cont *AciController) handleSnatUpdate(snatpolicy *snatpolicy.SnatPolicy) bool {
-
+	cont.log.Debug("snat update on ", snatpolicy.ObjectMeta.Name)
 	_, err := cache.MetaNamespaceKeyFunc(snatpolicy)
 	if err != nil {
 		SnatPolicyLogger(cont.log, snatpolicy).
@@ -121,13 +133,25 @@ func (cont *AciController) handleSnatUpdate(snatpolicy *snatpolicy.SnatPolicy) b
 	var requeue bool
 	cont.indexMutex.Lock()
 	cont.updateSnatPolicyCache(policyName, snatpolicy)
-	cont.log.Debug("map issssssssss ", cont.snatPolicyCache)
 	cont.indexMutex.Unlock()
-	err = cont.updateServiceDeviceInstanceSnat("MYSNAT")
-	if err != nil {
-		requeue = false
+
+	cont.indexMutex.Lock()
+	if cont.snatSyncEnabled {
+		cont.indexMutex.Unlock()
+//		cont.log.Debug(".update key is ...", key ," is ", "YESSS")
+		err = cont.updateServiceDeviceInstanceSnat("MYSNAT")
+		if err == nil {
+			requeue = true
+		}
+	} else {
+		cont.indexMutex.Unlock()
 	}
-	cont.log.Debug("map issssssssss ", cont.snatPolicyCache)
+//	cont.log.Debug("map issssssssss ", cont.snatPolicyCache)
+//	if cont.apicConn.GetDesiredState("vk8s_1_snat_MYSNAT") != nil {
+//		cont.log.Debug("Desired state is there @@@@@@@@@@@@@@")
+//	} else {
+//		cont.log.Debug("Desired state isnt there $$$$$$$$")
+//	}
 	return requeue
 }
 
@@ -145,7 +169,7 @@ func (cont *AciController) updateSnatPolicyCache(key string, snatobj interface{}
 		myLabels = append(myLabels, lab)
 	}
 	mypolicy.Selector = MyPodSelector{Labels: myLabels, Deployment: snatDeploy, Namespace: snatNS}
-	cont.snatPolicyCache[key] = mypolicy
+	cont.snatPolicyCache[key] = &mypolicy
 //	return mypolicy
 }
 
@@ -164,3 +188,11 @@ func (cont *AciController) snatPolicyDelete(snatobj interface{}) {
 	}
 	cont.indexMutex.Unlock()
 }
+
+func (cont *AciController) snatFullSync() {
+	cache.ListAll(cont.snatIndexer, labels.Everything(),
+		func(sobj interface{}) {
+			cont.queueSnatUpdate(sobj.(*snatpolicy.SnatPolicy))
+		})
+}
+

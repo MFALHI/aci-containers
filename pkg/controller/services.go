@@ -312,8 +312,8 @@ func apicExtNet(name string, tenantName string, l3Out string,
 
 	en := apicapi.NewL3extInstP(tenantName, l3Out, name)
 	enDn := en.GetDn()
-	en.AddChild(apicapi.NewFvRsProv(enDn, name))
-
+//	en.AddChild(apicapi.NewFvRsProv(enDn, name))
+	en.AddChild(apicapi.NewFvRsCons(enDn, name))
 	sharedSecurityString := "import-security,shared-security"
 	for _, ingress := range ingresses {
 		ip := net.ParseIP(ingress)
@@ -339,7 +339,8 @@ func apicExtNetSnat(name string, tenantName string, l3Out string,
 
 	en := apicapi.NewL3extInstP(tenantName, l3Out, name)
 	enDn := en.GetDn()
-	en.AddChild(apicapi.NewFvRsProv(enDn, name))
+//	en.AddChild(apicapi.NewFvRsProv(enDn, name))
+	en.AddChild(apicapi.NewFvRsCons(enDn, name))
 
 	sharedSecurityString := "import-security,shared-security"
 	for _, ingress := range ingresses {
@@ -366,6 +367,13 @@ func apicExtNetCons(conName string, tenantName string,
 
 	enDn := fmt.Sprintf("uni/tn-%s/out-%s/instP-%s", tenantName, l3Out, net)
 	return apicapi.NewFvRsCons(enDn, conName)
+}
+
+func apicExtNetProv(conName string, tenantName string,
+        l3Out string, net string) apicapi.ApicObject {
+
+        enDn := fmt.Sprintf("uni/tn-%s/out-%s/instP-%s", tenantName, l3Out, net)
+        return apicapi.NewFvRsProv(enDn, conName)
 }
 
 //Helper function to check if a string item exists in a slice
@@ -434,8 +442,10 @@ func apicFilter(name string, tenantName string,
 			fe.SetAttr("prot", "tcp")
 		}
 		pstr := strconv.Itoa(int(port.Port))
-		fe.SetAttr("dFromPort", pstr)
-		fe.SetAttr("dToPort", pstr)
+//		fe.SetAttr("dFromPort", pstr)
+//		fe.SetAttr("dToPort", pstr)
+		fe.SetAttr("sFromPort", pstr)
+		fe.SetAttr("sToPort", pstr)
 		filter.AddChild(fe)
 	}
 	return filter
@@ -456,10 +466,11 @@ func apicFilterSnat(name string, tenantName string,
                 fe.SetAttr("prot", "udp")
                 pstr_start := strconv.Itoa(int(port.start))
                 pstr_end := strconv.Itoa(int(port.end))
-                fe.SetAttr("dFromPort", pstr_start)
-                fe.SetAttr("dToPort", pstr_end)
-//                fe.SetAttr("sFromPort", "http")
-  //              fe.SetAttr("sToPort", "http")
+            //    fe.SetAttr("dFromPort", pstr_start)
+              //  fe.SetAttr("dToPort", pstr_end)
+                fe.SetAttr("sFromPort", pstr_start)
+                fe.SetAttr("sToPort", pstr_end)
+		fe.SetAttr("stateful", "yes")
                 filter.AddChild(fe)
 
                 fe1 := apicapi.NewVzEntry(filterDn, strconv.Itoa(i+1))
@@ -467,10 +478,11 @@ func apicFilterSnat(name string, tenantName string,
                 fe1.SetAttr("prot", "tcp")
                 pstr_start1 := strconv.Itoa(int(port.start))
                 pstr_end1 := strconv.Itoa(int(port.end))
-                fe1.SetAttr("dFromPort", pstr_start1)
-                fe1.SetAttr("dToPort", pstr_end1)
-    //            fe1.SetAttr("sFromPort", "http")
-      //          fe1.SetAttr("sToPort", "http")
+               // fe1.SetAttr("dFromPort", pstr_start1)
+               // fe1.SetAttr("dToPort", pstr_end1)
+                fe1.SetAttr("sFromPort", pstr_start1)
+                fe1.SetAttr("sToPort", pstr_end1)
+		fe1.SetAttr("stateful", "yes")
                 filter.AddChild(fe1)
 
         }
@@ -581,10 +593,10 @@ func (cont *AciController) updateServiceDeviceInstance(key string,
 
 		contract := apicContract(name, cont.config.AciVrfTenant, graphName, conScope)
 		serviceObjs = append(serviceObjs, contract)
-
 		for _, net := range cont.config.AciExtNetworks {
 			serviceObjs = append(serviceObjs,
-				apicExtNetCons(name, cont.config.AciVrfTenant,
+//				apicExtNetCons(name, cont.config.AciVrfTenant,
+				apicExtNetProv(name, cont.config.AciVrfTenant,
 					cont.config.AciL3Out, net))
 		}
 
@@ -607,19 +619,16 @@ func (cont *AciController) updateServiceDeviceInstance(key string,
 
 func (cont *AciController) updateServiceDeviceInstanceSnat(key string) error {
 
-	cont.log.Debug("IN UPDATE SERVUCE")
-/*        endpointsobj, exists, err := cont.endpointsIndexer.GetByKey(key)
-        if err != nil {
-                cont.log.Error("Could not lookup endpoints for " +
-                        key + ": " + err.Error())
-                return err
-        }
-*/
-	cont.indexMutex.Lock()
 	nodeList := cont.nodeIndexer.List()
 	nodeMap := make(map[string]*metadata.ServiceEndpoint)
 
-	cont.log.Debug("len of node cache=======", len(cont.nodeServiceMetaCache))
+	if len(cont.nodeServiceMetaCache) == 0 {
+		errString := "invalid node count !!!!!!!!"
+		cont.log.Debug(errString)
+		err := errors.New(errString)
+		return err
+	}
+	cont.indexMutex.Lock()
 	if len(nodeList) > 0 {
 		for _, nodeItem := range nodeList {
 			node := nodeItem.(*v1.Node)
@@ -636,7 +645,6 @@ func (cont *AciController) updateServiceDeviceInstanceSnat(key string) error {
 		}
 	}
 	cont.indexMutex.Unlock()
-	cont.log.Debug("node map is ", nodeMap)
 
 	var nodes []string
         for node := range nodeMap {
@@ -695,7 +703,8 @@ func (cont *AciController) updateServiceDeviceInstanceSnat(key string) error {
 
                 for _, net := range cont.config.AciExtNetworks {
                         serviceObjs = append(serviceObjs,
-                                apicExtNetCons(name, cont.config.AciVrfTenant,
+                               // apicExtNetCons(name, cont.config.AciVrfTenant,
+				apicExtNetProv(name, cont.config.AciVrfTenant,
                                         cont.config.AciL3Out, net))
                 }
 
@@ -723,6 +732,7 @@ func (cont *AciController) queueServiceUpdateByKey(key string) {
 
 func (cont *AciController) queueServiceUpdate(service *v1.Service) {
 	key, err := cache.MetaNamespaceKeyFunc(service)
+	cont.log.Debug("SERVICE FULL SYNC ......", key)
 	if err != nil {
 		serviceLogger(cont.log, service).
 			Error("Could not create service key: ", err)

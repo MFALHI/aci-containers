@@ -190,7 +190,14 @@ func (env *K8sEnvironment) PrepareRun(stopCh <-chan struct{}) error {
 		func(obj interface{}) bool {
 			return cont.handleSnatUpdate(obj.(*snatpolicy.SnatPolicy))
 		}, stopCh)
-	// snatFullSync() 
+	cont.log.Debug("Waiting for snat cache sync")
+	cache.WaitForCacheSync(stopCh,
+		cont.snatInformer.HasSynced)
+	cont.indexMutex.Lock()
+	cont.snatSyncEnabled = true
+	cont.indexMutex.Unlock()
+	cont.snatFullSync()
+	cont.log.Info("Snat cache sync successful")
 	go cont.networkPolicyInformer.Run(stopCh)
 	go cont.processQueue(cont.podQueue, cont.podIndexer,
 		func(obj interface{}) bool {
@@ -207,8 +214,7 @@ func (env *K8sEnvironment) PrepareRun(stopCh <-chan struct{}) error {
 		cont.replicaSetInformer.HasSynced,
 		cont.deploymentInformer.HasSynced,
 		cont.podInformer.HasSynced,
-		cont.networkPolicyInformer.HasSynced,
-		cont.snatInformer.HasSynced)
+		cont.networkPolicyInformer.HasSynced)
 	cont.log.Info("Cache sync successful")
 	return nil
 }

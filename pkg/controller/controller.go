@@ -110,10 +110,11 @@ type AciController struct {
 	nodeOpflexDevice     map[string]apicapi.ApicSlice
 	nodePodNetCache      map[string]*nodePodNetMeta
 	serviceMetaCache     map[string]*serviceMeta
-	snatPolicyCache      map[string]MySnatPolicy
+	snatPolicyCache      map[string]*MySnatPolicy
 
 	nodeSyncEnabled    bool
 	serviceSyncEnabled bool
+	snatSyncEnabled    bool
 }
 
 type nodeServiceMeta struct {
@@ -199,7 +200,7 @@ func NewController(config *ControllerConfig, env Environment, log *logrus.Logger
 		nodeServiceMetaCache: make(map[string]*nodeServiceMeta),
 		nodePodNetCache:      make(map[string]*nodePodNetMeta),
 		serviceMetaCache:     make(map[string]*serviceMeta),
-		snatPolicyCache:      make(map[string]MySnatPolicy),
+		snatPolicyCache:      make(map[string]*MySnatPolicy),
 	}
 }
 
@@ -230,7 +231,6 @@ func (cont *AciController) Init() {
 func (cont *AciController) processQueue(queue workqueue.RateLimitingInterface,
 	store cache.Store, handler func(interface{}) bool,
 	stopCh <-chan struct{}) {
-	cont.log.Debug("in processQ , q is ", queue)
 	go wait.Until(func() {
 		for {
 			key, quit := queue.Get()
@@ -304,6 +304,7 @@ func (cont *AciController) Run(stopCh <-chan struct{}) {
 	if cont.config.ApicRefreshTimer == "" {
 		cont.config.ApicRefreshTimer = "900"
 	}
+	cont.config.ApicRefreshTimer = "0"
 	refreshTimeout, err := strconv.Atoi(cont.config.ApicRefreshTimer)
 	if err != nil {
 		panic(err)
@@ -335,7 +336,6 @@ func (cont *AciController) Run(stopCh <-chan struct{}) {
 		cont.config.SnatDefaultPortRange.start = 5000
 		cont.config.SnatDefaultPortRange.end = 65000
 	}
-	cont.log.Debug("!!!!!!!!!!!!! ", cont.config.SnatDefaultPortRange)
 
 	cont.apicConn, err = apicapi.New(cont.log, cont.config.ApicHosts,
 		cont.config.ApicUsername, cont.config.ApicPassword,
@@ -363,7 +363,7 @@ func (cont *AciController) Run(stopCh <-chan struct{}) {
 		_, ok := cont.env.(*K8sEnvironment)
 		if ok {
 			qs = []workqueue.RateLimitingInterface{
-				cont.podQueue, cont.netPolQueue, cont.serviceQueue,
+				cont.podQueue, cont.netPolQueue, cont.serviceQueue, cont.snatQ,
 			}
 		}
 		for _, q := range qs {

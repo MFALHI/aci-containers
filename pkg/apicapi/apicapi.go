@@ -277,10 +277,10 @@ func (conn *ApicConnection) restart() {
 }
 
 func (conn *ApicConnection) handleQueuedDn(dn string) bool {
+	//conn.log.Debug("handling queued dn ........", dn)
 	var respClasses []string
 	var updateHandlers []ApicObjectHandler
 	var deleteHandlers []ApicDnHandler
-
 	handleId := func(id string) {
 		conn.indexMutex.Lock()
 		if value, ok := conn.subscriptions.ids[id]; ok {
@@ -347,7 +347,6 @@ func (conn *ApicConnection) handleQueuedDn(dn string) bool {
 
 func (conn *ApicConnection) processQueue(queue workqueue.RateLimitingInterface,
 	queueStop <-chan struct{}) {
-
 	go wait.Until(func() {
 		for {
 			dn, quit := queue.Get()
@@ -404,7 +403,6 @@ func (conn *ApicConnection) runConn(stopCh <-chan struct{}) {
 			}
 		}
 	}()
-
 	conn.indexMutex.Lock()
 	oldState := conn.cacheDnSubIds
 	conn.cachedState = make(map[string]ApicSlice)
@@ -419,6 +417,8 @@ func (conn *ApicConnection) runConn(stopCh <-chan struct{}) {
 		),
 		"delta")
 	go conn.processQueue(conn.deltaQueue, queueStop)
+
+	////LOOK AT THE PROCESS QUEUES if tge queues look as expected 
 	conn.indexMutex.Unlock()
 
 	var hasErr bool
@@ -431,6 +431,18 @@ func (conn *ApicConnection) runConn(stopCh <-chan struct{}) {
 	}
 	if !hasErr {
 		conn.checkDeletes(oldState)
+		if conn.GetDesiredState("vk8s_1_snat_MYSNAT") != nil {
+//                conn.log.Debug("MYDesired state is there @@@@@@@@@@@@@@")
+        } else {
+  //              conn.log.Debug("MYDesired state isnt there $$$$$$$$")
+        }
+
+        if conn.GetDesiredState("vk8s_1_svc_default_frontend") != nil {
+    //            conn.log.Debug("NOTMYDesired state is there @@@@@@@@@@@@@@")
+        } else {
+      //          conn.log.Debug("NOTMYDesired state isnt there $$$$$$$$")
+        }
+
 		go func() {
 			if conn.FullSyncHook != nil {
 				conn.FullSyncHook()
